@@ -3,20 +3,8 @@ const https = require('https');
 const authorization =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MzExNjUsImFjY291bnRJZCI6NiwibWVyY2hhbnRJZCI6MjIsImFjY291bnRUeXBlIjoiTUVSQ0hBTlQiLCJ0eXBlIjoiQVVUSE9SSVpFIiwiaWF0IjoxNjc2ODU3NjM4fQ.QzWT2o4GJ3zvGyEXQQpqMI1LG2o55K1Z1OL8ZaYKAyA';
 
-/// get token ///
-
-const defaultValueGetToken = {
-  partnerTransaction: '342313213312e24234',
-  ipnUrl: 'google.com',
-  ip: '127.0.0.1',
-  redirectUrl: 'google.com/r',
-  failedUrl: 'google.com/f',
-  expiryTime: 20,
-  username: 'vutp',
-};
-
-function getToken() {
-  const requestBody = JSON.stringify(defaultValueGetToken);
+function getToken(infoGetToken) {
+  const requestBody = JSON.stringify(infoGetToken);
   const options = {
     hostname: 'dev-gapi.payme.net.vn',
     path: '/sdk',
@@ -32,13 +20,12 @@ function getToken() {
       res.setEncoding('utf8');
       res.on('data', (body) => {
         const data = JSON.parse(body);
-        console.log('getToken()', data);
-        resolve(data.data.token);
+        if (data.code === 181000) {
+          resolve(data.data);
+        } else {
+          reject(data);
+        }
       });
-    });
-
-    req.on('error', (error) => {
-      reject(error);
     });
 
     req.write(requestBody);
@@ -46,20 +33,41 @@ function getToken() {
   });
 }
 
-/// payment ///
-
-async function payment() {
+async function createPaymentOrder(
+  partnerTransaction,
+  ipnUrl,
+  ip,
+  redirectUrl,
+  failedUrl,
+  expiryTime,
+  username,
+  amount,
+  desc,
+  payMethod,
+  cardNumber,
+  cardHolder,
+  issueDate
+) {
   try {
-    const token = await getToken();
+    const infoGetToken = {
+      partnerTransaction,
+      ipnUrl,
+      ip,
+      redirectUrl,
+      failedUrl,
+      expiryTime,
+      username,
+    };
+    const { token } = await getToken(infoGetToken);
     const paymentInfo = {
       token: token,
-      amount: 30000,
-      desc: 'mo ta',
-      payMethod: 'ATMCARD',
+      amount,
+      desc,
+      payMethod,
       payData: {
-        cardNumber: '9704001000000018',
-        cardHolder: 'NGUYEN VAN A',
-        issueDate: '03/07',
+        cardNumber,
+        cardHolder,
+        issueDate,
       },
     };
     const requestBody = JSON.stringify(paymentInfo);
@@ -72,29 +80,26 @@ async function payment() {
       },
     };
 
-    const data = await new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const req = https.request(options, (res) => {
-        let data = '';
         res.setEncoding('utf8');
-        res.on('data', (chunk) => {
-          data += chunk;
-        });
-        res.on('end', () => {
-          resolve(JSON.parse(data));
+        res.on('data', (body) => {
+          const data = JSON.parse(body);
+          if (data.code === 109300) {
+            resolve(data);
+          } else {
+            reject(data);
+          }
         });
       });
-
-      req.on('error', (error) => {
-        reject(error);
-      });
-
       req.write(requestBody);
       req.end();
     });
-    console.log('payment()', data);
   } catch (error) {
-    console.error('Error:', error);
+    throw error;
   }
 }
 
-payment();
+module.exports = {
+  createPaymentOrder,
+};
